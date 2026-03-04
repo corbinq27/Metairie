@@ -29,11 +29,6 @@ targets:
         SWIFT_VERSION: "5.9"
     entitlements:
       path: SiriMetra/Resources/SiriMetra.entitlements
-      properties:
-        com.apple.developer.applesignin:
-          - Default
-        com.apple.developer.siri: true
-        aps-environment: development
 
 schemes:
   SiriMetra:

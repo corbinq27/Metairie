@@ -42,10 +42,6 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
-	<key>NSSiriUsageDescription</key>
-	<string>SiriMetra uses Siri to tell you when the next Metra train departs.</string>
-	<key>NSUserTrackingUsageDescription</key>
-	<string>SiriMetra does not track you. This permission is not requested.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 </dict>
