@@ -16,8 +16,15 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
-                // MARK: - Stations
-                Section("Your Stations") {
+                // MARK: - Line & Stations
+                Section("Your Commute") {
+                    HStack {
+                        Label("Metra Line", systemImage: "train.side.front.car")
+                        Spacer()
+                        Text(viewModel.selectedRouteName ?? "Not set")
+                            .foregroundStyle(.secondary)
+                    }
+
                     Button {
                         showStationPicker = .home
                     } label: {
@@ -120,21 +127,26 @@ struct SettingsView: View {
             .sheet(item: $showStationPicker) { target in
                 NavigationStack {
                     StationPickerView(
-                        stations: viewModel.stations,
+                        routes: viewModel.routes,
+                        selectedRouteID: $viewModel.selectedRouteID,
                         selectedStationID: target == .home
                             ? $viewModel.selectedHomeID
                             : $viewModel.selectedWorkID
                     )
+                    .padding()
                     .navigationTitle(target == .home ? "Home Station" : "Work Station")
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) {
                             Button("Done") {
+                                preferencesStore.preferences.selectedRouteID = viewModel.selectedRouteID
                                 if target == .home {
                                     preferencesStore.preferences.homeStationID = viewModel.selectedHomeID
                                 } else {
                                     preferencesStore.preferences.workStationID = viewModel.selectedWorkID
                                 }
                                 showStationPicker = nil
+                                // Refresh display names
+                                Task { await viewModel.load(preferences: preferencesStore.preferences) }
                             }
                         }
                         ToolbarItem(placement: .cancellationAction) {

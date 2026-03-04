@@ -2,25 +2,29 @@ import Foundation
 
 @MainActor
 final class SettingsViewModel: ObservableObject {
-    @Published var stations: [Station] = []
+    @Published var routes: [Route] = []
     @Published var homeStationName: String?
     @Published var workStationName: String?
+    @Published var selectedRouteID: String?
     @Published var selectedHomeID: String?
     @Published var selectedWorkID: String?
+    @Published var selectedRouteName: String?
 
     private let engine = ScheduleEngine.shared
 
     func load(preferences: UserPreferences) async {
         do {
             try await engine.refreshData()
-            stations = await engine.getAllStations().sorted { $0.name < $1.name }
+            routes = await engine.getAllRoutes().sorted { $0.longName < $1.longName }
         } catch {
-            stations = []
+            routes = []
         }
 
+        selectedRouteID = preferences.selectedRouteID
         selectedHomeID = preferences.homeStationID
         selectedWorkID = preferences.workStationID
         homeStationName = await engine.stationName(for: preferences.homeStationID ?? "")
         workStationName = await engine.stationName(for: preferences.workStationID ?? "")
+        selectedRouteName = routes.first(where: { $0.id == selectedRouteID })?.longName
     }
 }

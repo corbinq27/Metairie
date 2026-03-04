@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Guides the user through setting up home/work stations.
+/// Guides the user through setting up their Metra commute.
+/// Flow: Welcome → Pick Line → Pick Home Station → Pick Work Station → Notifications → Siri
 struct OnboardingView: View {
     @EnvironmentObject var preferencesStore: PreferencesStore
     @StateObject private var viewModel = OnboardingViewModel()
@@ -9,41 +10,45 @@ struct OnboardingView: View {
     var body: some View {
         NavigationStack {
             TabView(selection: $currentStep) {
-                // Step 1: Welcome
+                // Step 0: Welcome
                 welcomeStep
                     .tag(0)
 
-                // Step 2: Select home station
+                // Step 1: Select Metra line
+                linePickerStep
+                    .tag(1)
+
+                // Step 2: Select home station (from selected line's stops)
                 stationPickerStep(
                     title: "Where is your home station?",
-                    subtitle: "Select the Metra station closest to home",
+                    subtitle: "Select the station closest to home",
                     icon: "house.fill",
                     selectedID: $viewModel.selectedHomeStationID
                 )
-                .tag(1)
+                .tag(2)
 
-                // Step 3: Select work station
+                // Step 3: Select work station (from selected line's stops)
                 stationPickerStep(
                     title: "Where is your work station?",
-                    subtitle: "Select the Metra station closest to work",
+                    subtitle: "Select the station closest to work",
                     icon: "building.2.fill",
                     selectedID: $viewModel.selectedWorkStationID
                 )
-                .tag(2)
+                .tag(3)
 
                 // Step 4: Notifications
                 notificationStep
-                    .tag(3)
+                    .tag(4)
 
                 // Step 5: Siri setup
                 siriStep
-                    .tag(4)
+                    .tag(5)
             }
             .tabViewStyle(.page(indexDisplayMode: .always))
             .animation(.easeInOut, value: currentStep)
         }
         .task {
-            await viewModel.loadStations()
+            await viewModel.loadRoutes()
         }
     }
 
@@ -72,6 +77,61 @@ struct OnboardingView: View {
         .padding()
     }
 
+    private var linePickerStep: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "train.side.front.car")
+                .font(.system(size: 40))
+                .foregroundStyle(.blue)
+                .padding(.top, 32)
+
+            Text("Which Metra line do you ride?")
+                .font(.title2)
+                .fontWeight(.bold)
+
+            Text("We'll show you stations on this line")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Metra Line")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.secondary)
+
+                Picker("Select a line", selection: $viewModel.selectedRouteID) {
+                    Text("Choose a line…")
+                        .tag(String?.none)
+                    ForEach(viewModel.routes) { route in
+                        Text(route.longName)
+                            .tag(Optional(route.id))
+                    }
+                }
+                .pickerStyle(.menu)
+                .tint(.primary)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.regularMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .padding(.horizontal)
+            .padding(.top, 8)
+
+            Spacer()
+
+            nextButton { currentStep = 2 }
+                .disabled(viewModel.selectedRouteID == nil)
+        }
+        .padding()
+        .onChange(of: viewModel.selectedRouteID) { _, newRouteID in
+            // Clear station selections when line changes
+            viewModel.selectedHomeStationID = nil
+            viewModel.selectedWorkStationID = nil
+            viewModel.stationsForRoute = []
+            guard let routeID = newRouteID else { return }
+            Task { await viewModel.loadStationsForRoute(routeID) }
+        }
+    }
+
     private func stationPickerStep(
         title: String,
         subtitle: String,
@@ -92,15 +152,50 @@ struct OnboardingView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            StationPickerView(
-                stations: viewModel.stations,
-                selectedStationID: selectedID
-            )
+            VStack(alignment: .leading, spacing: 6) {
+                if let routeName = viewModel.selectedRouteName {
+                    Text(routeName)
+                        .font(.caption)
+                        .foregroundStyle(.blue)
+                        .fontWeight(.medium)
+                }
 
-            nextButton {
-                currentStep += 1
+                if viewModel.isLoadingStations {
+                    HStack {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Loading stations…")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.regularMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                } else {
+                    Picker("Select a station", selection: selectedID) {
+                        Text("Choose a station…")
+                            .tag(String?.none)
+                        ForEach(viewModel.stationsForRoute) { station in
+                            Text(station.name)
+                                .tag(Optional(station.id))
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .tint(.primary)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.regularMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
             }
-            .disabled(selectedID.wrappedValue == nil)
+            .padding(.horizontal)
+            .padding(.top, 8)
+
+            Spacer()
+
+            nextButton { currentStep += 1 }
+                .disabled(selectedID.wrappedValue == nil)
         }
         .padding()
     }
@@ -125,7 +220,7 @@ struct OnboardingView: View {
             Button {
                 Task {
                     await viewModel.requestNotifications()
-                    currentStep = 4
+                    currentStep = 5
                 }
             } label: {
                 Text("Enable Notifications")
@@ -138,7 +233,7 @@ struct OnboardingView: View {
             .padding(.horizontal, 32)
 
             Button("Skip") {
-                currentStep = 4
+                currentStep = 5
             }
             .foregroundStyle(.secondary)
 
@@ -210,6 +305,7 @@ struct OnboardingView: View {
     }
 
     private func completeOnboarding() {
+        preferencesStore.preferences.selectedRouteID = viewModel.selectedRouteID
         preferencesStore.preferences.homeStationID = viewModel.selectedHomeStationID
         preferencesStore.preferences.workStationID = viewModel.selectedWorkStationID
         preferencesStore.preferences.notificationsEnabled = viewModel.notificationsEnabled
@@ -221,17 +317,34 @@ struct OnboardingView: View {
 
 @MainActor
 final class OnboardingViewModel: ObservableObject {
-    @Published var stations: [Station] = []
+    @Published var routes: [Route] = []
+    @Published var stationsForRoute: [Station] = []
+    @Published var selectedRouteID: String?
     @Published var selectedHomeStationID: String?
     @Published var selectedWorkStationID: String?
     @Published var notificationsEnabled = false
+    @Published var isLoadingStations = false
 
-    func loadStations() async {
+    var selectedRouteName: String? {
+        routes.first(where: { $0.id == selectedRouteID })?.longName
+    }
+
+    func loadRoutes() async {
         do {
-            stations = try await MetraAPIService.shared.fetchStations()
-                .sorted { $0.name < $1.name }
+            routes = try await MetraAPIService.shared.fetchRoutes()
+                .sorted { $0.longName < $1.longName }
         } catch {
-            // Stations will be empty; user sees an empty picker
+            routes = []
+        }
+    }
+
+    func loadStationsForRoute(_ routeID: String) async {
+        isLoadingStations = true
+        defer { isLoadingStations = false }
+        do {
+            stationsForRoute = try await MetraAPIService.shared.fetchStopsForRoute(routeID: routeID)
+        } catch {
+            stationsForRoute = []
         }
     }
 

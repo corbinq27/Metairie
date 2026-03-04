@@ -4,6 +4,7 @@ import Foundation
 struct UserPreferences: Codable {
     var homeStationID: String?
     var workStationID: String?
+    var selectedRouteID: String?  // The user's primary Metra line
     var preferredRouteIDs: [String]
     var notificationsEnabled: Bool
     var notifyOnDelays: Bool
@@ -17,6 +18,7 @@ struct UserPreferences: Codable {
     static let `default` = UserPreferences(
         homeStationID: nil,
         workStationID: nil,
+        selectedRouteID: nil,
         preferredRouteIDs: [],
         notificationsEnabled: false,
         notifyOnDelays: true,

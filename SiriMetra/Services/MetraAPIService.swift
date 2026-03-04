@@ -56,6 +56,31 @@ actor MetraAPIService {
             .map { $0.toStopTime() }
     }
 
+    /// Fetch stations that belong to a specific route.
+    /// Resolves via trips → stop_times → unique stops for that route.
+    func fetchStopsForRoute(routeID: String) async throws -> [Station] {
+        let trips = try await fetchTrips(routeID: routeID)
+        guard let representativeTrip = trips.first else { return [] }
+
+        let stopTimes = try await fetchStopTimes(tripID: representativeTrip.id)
+        let allStations = try await fetchStations()
+
+        let stationsByID = Dictionary(
+            allStations.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+
+        // Return stations in stop-sequence order, deduped
+        var seen = Set<String>()
+        return stopTimes
+            .sorted { $0.stopSequence < $1.stopSequence }
+            .compactMap { st -> Station? in
+                guard !seen.contains(st.stopID), let station = stationsByID[st.stopID] else { return nil }
+                seen.insert(st.stopID)
+                return station
+            }
+    }
+
     // MARK: - Real-Time Data (GTFS-RT)
 
     /// Fetch real-time trip updates (delays, cancellations).
