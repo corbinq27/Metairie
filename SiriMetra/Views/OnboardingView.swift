@@ -92,29 +92,54 @@ struct OnboardingView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Metra Line")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.secondary)
-
-                Picker("Select a line", selection: $viewModel.selectedRouteID) {
-                    Text("Choose a line…")
-                        .tag(String?.none)
-                    ForEach(viewModel.routes) { route in
-                        Text(route.longName)
-                            .tag(Optional(route.id))
-                    }
+            if viewModel.isLoadingRoutes {
+                VStack(spacing: 12) {
+                    ProgressView()
+                    Text("Downloading Metra schedule…")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
-                .pickerStyle(.menu)
-                .tint(.primary)
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.regularMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .padding(.top, 24)
+            } else if let error = viewModel.loadError {
+                VStack(spacing: 12) {
+                    Image(systemName: "wifi.exclamationmark")
+                        .font(.title)
+                        .foregroundStyle(.red)
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    Button("Retry") {
+                        Task { await viewModel.loadRoutes() }
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .padding(.top, 24)
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Metra Line")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.secondary)
+
+                    Picker("Select a line", selection: $viewModel.selectedRouteID) {
+                        Text("Choose a line…")
+                            .tag(String?.none)
+                        ForEach(viewModel.routes) { route in
+                            Text(route.longName)
+                                .tag(Optional(route.id))
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .tint(.primary)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.regularMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
             }
-            .padding(.horizontal)
-            .padding(.top, 8)
 
             Spacer()
 
@@ -123,7 +148,6 @@ struct OnboardingView: View {
         }
         .padding()
         .onChange(of: viewModel.selectedRouteID) { _, newRouteID in
-            // Clear station selections when line changes
             viewModel.selectedHomeStationID = nil
             viewModel.selectedWorkStationID = nil
             viewModel.stationsForRoute = []
@@ -324,28 +348,32 @@ final class OnboardingViewModel: ObservableObject {
     @Published var selectedWorkStationID: String?
     @Published var notificationsEnabled = false
     @Published var isLoadingStations = false
+    @Published var isLoadingRoutes = false
+    @Published var loadError: String?
+
+    private let gtfs = GTFSDataManager.shared
 
     var selectedRouteName: String? {
         routes.first(where: { $0.id == selectedRouteID })?.longName
     }
 
     func loadRoutes() async {
+        isLoadingRoutes = true
+        loadError = nil
         do {
-            routes = try await MetraAPIService.shared.fetchRoutes()
-                .sorted { $0.longName < $1.longName }
+            try await gtfs.loadData()
+            routes = await gtfs.routes.sorted { $0.longName < $1.longName }
         } catch {
+            loadError = error.localizedDescription
             routes = []
         }
+        isLoadingRoutes = false
     }
 
     func loadStationsForRoute(_ routeID: String) async {
         isLoadingStations = true
-        defer { isLoadingStations = false }
-        do {
-            stationsForRoute = try await MetraAPIService.shared.fetchStopsForRoute(routeID: routeID)
-        } catch {
-            stationsForRoute = []
-        }
+        stationsForRoute = await gtfs.stationsForRoute(routeID)
+        isLoadingStations = false
     }
 
     func requestNotifications() async {

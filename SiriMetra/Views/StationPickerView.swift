@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// A two-step station picker: pick a Metra line first, then pick a station on that line.
-/// Uses native Picker dropdowns — no search bar needed.
+/// Uses native Picker dropdowns. Data comes from GTFSDataManager (cached GTFS schedule).
 struct StationPickerView: View {
     let routes: [Route]
     @Binding var selectedRouteID: String?
@@ -93,11 +93,7 @@ struct StationPickerView: View {
 
     private func loadStations(for routeID: String) async {
         isLoadingStations = true
-        defer { isLoadingStations = false }
-        do {
-            stationsForRoute = try await MetraAPIService.shared.fetchStopsForRoute(routeID: routeID)
-        } catch {
-            stationsForRoute = []
-        }
+        stationsForRoute = await GTFSDataManager.shared.stationsForRoute(routeID)
+        isLoadingStations = false
     }
 }

@@ -75,6 +75,21 @@ struct SettingsView: View {
                     }
                 }
 
+                // MARK: - Realtime Data
+                Section {
+                    SecureField("Metra API Key", text: Binding(
+                        get: { preferencesStore.preferences.metraAPIKey ?? "" },
+                        set: { preferencesStore.preferences.metraAPIKey = $0.isEmpty ? nil : $0 }
+                    ))
+                    .textContentType(.password)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                } header: {
+                    Text("Realtime Data")
+                } footer: {
+                    Text("Optional. Get a free API key from metra.com/metra-gtfs-api to see live delays and alerts.")
+                }
+
                 // MARK: - Siri
                 Section("Siri") {
                     Label {

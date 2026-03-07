@@ -1,91 +1,42 @@
 import Foundation
 
-/// Fetches real-time and static schedule data from Metra's GTFS API.
-/// All network requests go only to Metra's official public API.
+/// Fetches real-time data from Metra's GTFS-RT public API.
+/// Static schedule data is handled by GTFSDataManager (from the schedule ZIP).
+/// Realtime endpoints require an API key obtained from metra.com/metra-gtfs-api.
 /// No user data is ever sent in these requests.
 actor MetraAPIService {
     static let shared = MetraAPIService()
 
-    // Metra's public GTFS API base URL
-    private let baseURL = URL(string: "https://gtfsapi.metrarail.com/gtfs")!
+    // Metra's public GTFS-RT API (new endpoint, replaces the decommissioned gtfsapi.metrarail.com)
+    private let realtimeBaseURL = URL(string: "https://gtfspublic.metrarr.com/gtfs/public")!
     private let session: URLSession
+
+    /// The API token for realtime data. Set from user preferences.
+    var apiToken: String?
 
     private init() {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 15
         config.timeoutIntervalForResource = 30
-        // No cookies, no caching of user-identifying data
         config.httpCookieAcceptPolicy = .never
         config.httpShouldSetCookies = false
         self.session = URLSession(configuration: config)
     }
 
-    // MARK: - Static GTFS Data
-
-    /// Fetch all Metra stations.
-    func fetchStations() async throws -> [Station] {
-        let url = baseURL.appendingPathComponent("schedule/stops")
-        let data = try await fetchData(from: url)
-        let gtfsStops = try JSONDecoder().decode([GTFSStop].self, from: data)
-        return gtfsStops.compactMap { $0.toStation() }
+    /// Set the API token from user preferences.
+    func setAPIToken(_ token: String?) {
+        apiToken = token
     }
 
-    /// Fetch all Metra routes/lines.
-    func fetchRoutes() async throws -> [Route] {
-        let url = baseURL.appendingPathComponent("schedule/routes")
-        let data = try await fetchData(from: url)
-        let gtfsRoutes = try JSONDecoder().decode([GTFSRoute].self, from: data)
-        return gtfsRoutes.map { $0.toRoute() }
-    }
+    /// Whether the realtime API is available (has an API key).
+    var hasRealtimeAccess: Bool { apiToken != nil && !(apiToken?.isEmpty ?? true) }
 
-    /// Fetch scheduled trips for a specific route.
-    func fetchTrips(routeID: String) async throws -> [Trip] {
-        let url = baseURL.appendingPathComponent("schedule/trips")
-            .appending(queryItems: [URLQueryItem(name: "route_id", value: routeID)])
-        let data = try await fetchData(from: url)
-        let gtfsTrips = try JSONDecoder().decode([GTFSTrip].self, from: data)
-        return gtfsTrips.map { $0.toTrip() }
-    }
-
-    /// Fetch stop times for a given trip.
-    func fetchStopTimes(tripID: String) async throws -> [StopTime] {
-        let url = baseURL.appendingPathComponent("schedule/stop_times")
-            .appending(queryItems: [URLQueryItem(name: "trip_id", value: tripID)])
-        let data = try await fetchData(from: url)
-        return try JSONDecoder().decode([GTFSStopTime].self, from: data)
-            .map { $0.toStopTime() }
-    }
-
-    /// Fetch stations that belong to a specific route.
-    /// Resolves via trips → stop_times → unique stops for that route.
-    func fetchStopsForRoute(routeID: String) async throws -> [Station] {
-        let trips = try await fetchTrips(routeID: routeID)
-        guard let representativeTrip = trips.first else { return [] }
-
-        let stopTimes = try await fetchStopTimes(tripID: representativeTrip.id)
-        let allStations = try await fetchStations()
-
-        let stationsByID = Dictionary(
-            allStations.map { ($0.id, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-
-        // Return stations in stop-sequence order, deduped
-        var seen = Set<String>()
-        return stopTimes
-            .sorted { $0.stopSequence < $1.stopSequence }
-            .compactMap { st -> Station? in
-                guard !seen.contains(st.stopID), let station = stationsByID[st.stopID] else { return nil }
-                seen.insert(st.stopID)
-                return station
-            }
-    }
-
-    // MARK: - Real-Time Data (GTFS-RT)
+    // MARK: - Real-Time Data (GTFS-RT JSON)
 
     /// Fetch real-time trip updates (delays, cancellations).
     func fetchTripUpdates() async throws -> [TripUpdate] {
-        let url = baseURL.appendingPathComponent("tripUpdates")
+        guard hasRealtimeAccess else { return [] }
+        let url = realtimeURL("tripupdates")
         let data = try await fetchData(from: url)
         let decoded = try JSONDecoder().decode([GTFSTripUpdate].self, from: data)
         return decoded.map { $0.toTripUpdate() }
@@ -93,7 +44,8 @@ actor MetraAPIService {
 
     /// Fetch current service alerts.
     func fetchAlerts() async throws -> [ServiceAlert] {
-        let url = baseURL.appendingPathComponent("alerts")
+        guard hasRealtimeAccess else { return [] }
+        let url = realtimeURL("alerts")
         let data = try await fetchData(from: url)
         let decoded = try JSONDecoder().decode([GTFSAlert].self, from: data)
         return decoded.map { $0.toServiceAlert() }
@@ -101,18 +53,32 @@ actor MetraAPIService {
 
     /// Fetch real-time vehicle positions.
     func fetchPositions() async throws -> [VehiclePosition] {
-        let url = baseURL.appendingPathComponent("positions")
+        guard hasRealtimeAccess else { return [] }
+        let url = realtimeURL("positions")
         let data = try await fetchData(from: url)
         return try JSONDecoder().decode([VehiclePosition].self, from: data)
     }
 
     // MARK: - Private
 
+    private func realtimeURL(_ endpoint: String) -> URL {
+        var url = realtimeBaseURL.appendingPathComponent(endpoint)
+        if let token = apiToken, !token.isEmpty {
+            url = url.appending(queryItems: [URLQueryItem(name: "api_token", value: token)])
+        }
+        return url
+    }
+
     private func fetchData(from url: URL) async throws -> Data {
         let request = URLRequest(url: url)
         let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw MetraAPIError.invalidResponse
+        }
+        if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+            throw MetraAPIError.invalidAPIKey
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
             throw MetraAPIError.invalidResponse
         }
         return data
@@ -125,12 +91,14 @@ enum MetraAPIError: LocalizedError {
     case invalidResponse
     case decodingFailed
     case networkUnavailable
+    case invalidAPIKey
 
     var errorDescription: String? {
         switch self {
         case .invalidResponse: return "Invalid response from Metra API."
-        case .decodingFailed: return "Failed to parse Metra schedule data."
+        case .decodingFailed: return "Failed to parse Metra data."
         case .networkUnavailable: return "Network unavailable. Please check your connection."
+        case .invalidAPIKey: return "Invalid Metra API key. Check your key in Settings."
         }
     }
 }
@@ -148,79 +116,7 @@ struct VehiclePosition: Codable, Identifiable {
     let timestamp: Date
 }
 
-// MARK: - GTFS JSON Mapping Types (Internal)
-
-private struct GTFSStop: Codable {
-    let stop_id: String
-    let stop_name: String
-    let stop_lat: Double
-    let stop_lon: Double
-    let wheelchair_boarding: Int?
-    let zone_id: String?
-
-    func toStation() -> Station? {
-        Station(
-            id: stop_id,
-            name: stop_name,
-            latitude: stop_lat,
-            longitude: stop_lon,
-            routeIDs: [],  // Populated via route-stop mappings
-            wheelchairAccessible: (wheelchair_boarding ?? 0) == 1,
-            zone: zone_id
-        )
-    }
-}
-
-private struct GTFSRoute: Codable {
-    let route_id: String
-    let route_short_name: String
-    let route_long_name: String
-    let route_color: String?
-
-    func toRoute() -> Route {
-        Route(
-            id: route_id,
-            shortName: route_short_name,
-            longName: route_long_name,
-            colorHex: route_color ?? "0078AE"
-        )
-    }
-}
-
-private struct GTFSTrip: Codable {
-    let trip_id: String
-    let route_id: String
-    let service_id: String
-    let direction_id: Int
-    let trip_headsign: String?
-
-    func toTrip() -> Trip {
-        Trip(
-            id: trip_id,
-            routeID: route_id,
-            serviceID: service_id,
-            directionID: direction_id,
-            tripHeadsign: trip_headsign ?? "",
-            stopTimes: []
-        )
-    }
-}
-
-private struct GTFSStopTime: Codable {
-    let stop_id: String
-    let arrival_time: String
-    let departure_time: String
-    let stop_sequence: Int
-
-    func toStopTime() -> StopTime {
-        StopTime(
-            stopID: stop_id,
-            arrivalTime: arrival_time,
-            departureTime: departure_time,
-            stopSequence: stop_sequence
-        )
-    }
-}
+// MARK: - GTFS-RT JSON Mapping Types (Internal)
 
 private struct GTFSTripUpdate: Codable {
     let id: String

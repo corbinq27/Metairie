@@ -7,6 +7,7 @@ final class HomeViewModel: ObservableObject {
     @Published var activeAlerts: [ServiceAlert] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var isScheduleLoaded = false
 
     private let engine = ScheduleEngine.shared
 
@@ -14,15 +15,22 @@ final class HomeViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
 
+        // Set API key for realtime data
+        if let key = preferences.metraAPIKey {
+            await MetraAPIService.shared.setAPIToken(key)
+        }
+
         do {
             try await engine.refreshData()
+            isScheduleLoaded = await engine.isDataLoaded()
 
             // Next train home (from work → home)
             if let workID = preferences.workStationID,
                let homeID = preferences.homeStationID {
                 nextTrainHome = try await engine.nextTrain(
                     fromStationID: workID,
-                    toStationID: homeID
+                    toStationID: homeID,
+                    routeID: preferences.selectedRouteID
                 )
             }
 
@@ -31,7 +39,8 @@ final class HomeViewModel: ObservableObject {
                let workID = preferences.workStationID {
                 nextTrainWork = try await engine.nextTrain(
                     fromStationID: homeID,
-                    toStationID: workID
+                    toStationID: workID,
+                    routeID: preferences.selectedRouteID
                 )
             }
 

@@ -10,12 +10,14 @@ final class SettingsViewModel: ObservableObject {
     @Published var selectedWorkID: String?
     @Published var selectedRouteName: String?
 
+    private let gtfs = GTFSDataManager.shared
     private let engine = ScheduleEngine.shared
 
     func load(preferences: UserPreferences) async {
+        // Load static data (from cache or download)
         do {
-            try await engine.refreshData()
-            routes = await engine.getAllRoutes().sorted { $0.longName < $1.longName }
+            try await gtfs.loadData()
+            routes = await gtfs.routes.sorted { $0.longName < $1.longName }
         } catch {
             routes = []
         }
