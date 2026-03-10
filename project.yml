@@ -41,7 +41,7 @@ targets:
       - path: SiriMetraWidget
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.sirimetra.app.widget
+        PRODUCT_BUNDLE_IDENTIFIER: com.sirimetra.app.SiriMetraWidget
         SWIFT_VERSION: "5.9"
         INFOPLIST_FILE: SiriMetraWidget/Info.plist
         TARGETED_DEVICE_FAMILY: "1"
