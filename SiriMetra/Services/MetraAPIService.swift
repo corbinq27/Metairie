@@ -2,7 +2,6 @@ import Foundation
 
 /// Fetches real-time data from Metra's GTFS-RT public API.
 /// Static schedule data is handled by GTFSDataManager (from the schedule ZIP).
-/// Realtime endpoints require an API key obtained from metra.com/metra-gtfs-api.
 /// No user data is ever sent in these requests.
 actor MetraAPIService {
     static let shared = MetraAPIService()
@@ -10,9 +9,6 @@ actor MetraAPIService {
     // Metra's public GTFS-RT API (new endpoint, replaces the decommissioned gtfsapi.metrarail.com)
     private let realtimeBaseURL = URL(string: "https://gtfspublic.metrarr.com/gtfs/public")!
     private let session: URLSession
-
-    /// The API token for realtime data. Set from user preferences.
-    var apiToken: String?
 
     private init() {
         let config = URLSessionConfiguration.default
@@ -23,20 +19,11 @@ actor MetraAPIService {
         self.session = URLSession(configuration: config)
     }
 
-    /// Set the API token from user preferences.
-    func setAPIToken(_ token: String?) {
-        apiToken = token
-    }
-
-    /// Whether the realtime API is available (has an API key).
-    var hasRealtimeAccess: Bool { apiToken != nil && !(apiToken?.isEmpty ?? true) }
-
     // MARK: - Real-Time Data (GTFS-RT JSON)
 
     /// Fetch real-time trip updates (delays, cancellations).
     func fetchTripUpdates() async throws -> [TripUpdate] {
-        guard hasRealtimeAccess else { return [] }
-        let url = realtimeURL("tripupdates")
+        let url = realtimeBaseURL.appendingPathComponent("tripupdates")
         let data = try await fetchData(from: url)
         let decoded = try JSONDecoder().decode([GTFSTripUpdate].self, from: data)
         return decoded.map { $0.toTripUpdate() }
@@ -44,8 +31,7 @@ actor MetraAPIService {
 
     /// Fetch current service alerts.
     func fetchAlerts() async throws -> [ServiceAlert] {
-        guard hasRealtimeAccess else { return [] }
-        let url = realtimeURL("alerts")
+        let url = realtimeBaseURL.appendingPathComponent("alerts")
         let data = try await fetchData(from: url)
         let decoded = try JSONDecoder().decode([GTFSAlert].self, from: data)
         return decoded.map { $0.toServiceAlert() }
@@ -53,30 +39,18 @@ actor MetraAPIService {
 
     /// Fetch real-time vehicle positions.
     func fetchPositions() async throws -> [VehiclePosition] {
-        guard hasRealtimeAccess else { return [] }
-        let url = realtimeURL("positions")
+        let url = realtimeBaseURL.appendingPathComponent("positions")
         let data = try await fetchData(from: url)
         return try JSONDecoder().decode([VehiclePosition].self, from: data)
     }
 
     // MARK: - Private
 
-    private func realtimeURL(_ endpoint: String) -> URL {
-        var url = realtimeBaseURL.appendingPathComponent(endpoint)
-        if let token = apiToken, !token.isEmpty {
-            url = url.appending(queryItems: [URLQueryItem(name: "api_token", value: token)])
-        }
-        return url
-    }
-
     private func fetchData(from url: URL) async throws -> Data {
         let request = URLRequest(url: url)
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw MetraAPIError.invalidResponse
-        }
-        if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
-            throw MetraAPIError.invalidAPIKey
         }
         guard (200...299).contains(httpResponse.statusCode) else {
             throw MetraAPIError.invalidResponse
@@ -91,14 +65,12 @@ enum MetraAPIError: LocalizedError {
     case invalidResponse
     case decodingFailed
     case networkUnavailable
-    case invalidAPIKey
 
     var errorDescription: String? {
         switch self {
         case .invalidResponse: return "Invalid response from Metra API."
         case .decodingFailed: return "Failed to parse Metra data."
         case .networkUnavailable: return "Network unavailable. Please check your connection."
-        case .invalidAPIKey: return "Invalid Metra API key. Check your key in Settings."
         }
     }
 }

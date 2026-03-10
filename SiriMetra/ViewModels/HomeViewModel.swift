@@ -17,11 +17,6 @@ final class HomeViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
 
-        // Set API key for realtime data
-        if let key = preferences.metraAPIKey {
-            await MetraAPIService.shared.setAPIToken(key)
-        }
-
         do {
             try await engine.refreshData()
             isScheduleLoaded = await engine.isDataLoaded()

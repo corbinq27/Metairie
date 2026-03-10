@@ -9,19 +9,6 @@ struct AlertsView: View {
             Group {
                 if viewModel.isLoading {
                     ProgressView("Loading alerts...")
-                } else if !viewModel.hasRealtimeAccess {
-                    VStack(spacing: 12) {
-                        Image(systemName: "key.fill")
-                            .font(.system(size: 48))
-                            .foregroundStyle(.secondary)
-                        Text("API Key Required")
-                            .font(.headline)
-                        Text("Add your free Metra API key in Settings to see live alerts and delay info.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 32)
-                    }
                 } else if viewModel.alerts.isEmpty {
                     VStack(spacing: 12) {
                         Image(systemName: "checkmark.circle.fill")

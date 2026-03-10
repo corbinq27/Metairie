@@ -6,7 +6,6 @@ struct UserPreferences: Codable {
     var workStationID: String?
     var selectedRouteID: String?  // The user's primary Metra line
     var preferredRouteIDs: [String]
-    var metraAPIKey: String?       // Optional: enables realtime delays/alerts
     var notificationsEnabled: Bool
     var notifyOnDelays: Bool
     var notifyOnAlerts: Bool
@@ -21,7 +20,6 @@ struct UserPreferences: Codable {
         workStationID: nil,
         selectedRouteID: nil,
         preferredRouteIDs: [],
-        metraAPIKey: nil,
         notificationsEnabled: false,
         notifyOnDelays: true,
         notifyOnAlerts: true,

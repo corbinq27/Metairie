@@ -2,7 +2,7 @@ import Foundation
 
 /// Computes next-train answers using GTFS static schedule + real-time updates.
 /// Static data comes from GTFSDataManager (downloaded GTFS ZIP).
-/// Realtime data comes from MetraAPIService (requires API key).
+/// Realtime data comes from MetraAPIService (public GTFS-RT feed).
 /// All computation happens on-device. No user data leaves the device.
 actor ScheduleEngine {
     static let shared = ScheduleEngine()
@@ -21,7 +21,7 @@ actor ScheduleEngine {
         try await gtfs.loadData()
     }
 
-    /// Refresh realtime data (delays, alerts). Requires API key.
+    /// Refresh realtime data (delays, alerts).
     func refreshRealtimeData() async {
         do {
             async let fetchedUpdates = api.fetchTripUpdates()
