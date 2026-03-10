@@ -29,12 +29,34 @@ targets:
         SWIFT_VERSION: "5.9"
     entitlements:
       path: SiriMetra/Resources/SiriMetra.entitlements
+    dependencies:
+      - target: SiriMetraWidgetExtension
+        embed: true
+
+  SiriMetraWidgetExtension:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: SiriMetraWidget
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.sirimetra.app.widget
+        SWIFT_VERSION: "5.9"
+        INFOPLIST_FILE: SiriMetraWidget/Info.plist
+        TARGETED_DEVICE_FAMILY: "1"
+    entitlements:
+      path: SiriMetraWidget/SiriMetraWidgetExtension.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.sirimetra.app
 
 schemes:
   SiriMetra:
     build:
       targets:
         SiriMetra: all
+        SiriMetraWidgetExtension: all
     run:
       config: Debug
     test:

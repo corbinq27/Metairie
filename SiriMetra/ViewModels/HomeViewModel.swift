@@ -1,4 +1,5 @@
 import Foundation
+import WidgetKit
 
 @MainActor
 final class HomeViewModel: ObservableObject {
@@ -10,6 +11,7 @@ final class HomeViewModel: ObservableObject {
     @Published var isScheduleLoaded = false
 
     private let engine = ScheduleEngine.shared
+    private let widgetDefaults = UserDefaults(suiteName: "group.com.sirimetra.app")
 
     func refresh(preferences: UserPreferences) async {
         isLoading = true
@@ -45,10 +47,53 @@ final class HomeViewModel: ObservableObject {
             }
 
             activeAlerts = await engine.getActiveAlerts()
+
+            // Push data to widgets via App Group
+            updateWidgetData()
         } catch {
             errorMessage = error.localizedDescription
         }
 
         isLoading = false
+    }
+
+    // MARK: - Widget Data
+
+    private func updateWidgetData() {
+        writeTrainData(nextTrainHome, key: "widget.homeTrainData")
+        writeTrainData(nextTrainWork, key: "widget.workTrainData")
+
+        if let homeName = nextTrainHome?.toStation.name {
+            widgetDefaults?.set(homeName, forKey: "widget.homeStationName")
+        }
+        if let workName = nextTrainWork?.toStation.name {
+            widgetDefaults?.set(workName, forKey: "widget.workStationName")
+        }
+
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    private func writeTrainData(_ result: ScheduleEngine.NextTrainResult?, key: String) {
+        guard let result else {
+            widgetDefaults?.removeObject(forKey: key)
+            return
+        }
+        struct WidgetTrainData: Codable {
+            let stationName: String
+            let departureTime: Date
+            let delayMinutes: Int?
+            let routeShortName: String?
+            let routeColorHex: String?
+        }
+        let data = WidgetTrainData(
+            stationName: result.toStation.name,
+            departureTime: result.departureTime,
+            delayMinutes: result.delayMinutes,
+            routeShortName: result.route?.shortName,
+            routeColorHex: result.route?.colorHex
+        )
+        if let encoded = try? JSONEncoder().encode(data) {
+            widgetDefaults?.set(encoded, forKey: key)
+        }
     }
 }

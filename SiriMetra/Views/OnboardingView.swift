@@ -7,45 +7,53 @@ struct OnboardingView: View {
     @StateObject private var viewModel = OnboardingViewModel()
     @State private var currentStep = 0
 
+    private let totalSteps = 6
+
     var body: some View {
         NavigationStack {
-            TabView(selection: $currentStep) {
-                // Step 0: Welcome
-                welcomeStep
-                    .tag(0)
+            VStack(spacing: 0) {
+                TabView(selection: $currentStep) {
+                    // Step 0: Welcome
+                    welcomeStep
+                        .tag(0)
 
-                // Step 1: Select Metra line
-                linePickerStep
-                    .tag(1)
+                    // Step 1: Select Metra line
+                    linePickerStep
+                        .tag(1)
 
-                // Step 2: Select home station (from selected line's stops)
-                stationPickerStep(
-                    title: "Where is your home station?",
-                    subtitle: "Select the station closest to home",
-                    icon: "house.fill",
-                    selectedID: $viewModel.selectedHomeStationID
-                )
-                .tag(2)
+                    // Step 2: Select home station (from selected line's stops)
+                    stationPickerStep(
+                        title: "Where is your home station?",
+                        subtitle: "Select the station closest to home",
+                        icon: "house.fill",
+                        selectedID: $viewModel.selectedHomeStationID
+                    )
+                    .tag(2)
 
-                // Step 3: Select work station (from selected line's stops)
-                stationPickerStep(
-                    title: "Where is your work station?",
-                    subtitle: "Select the station closest to work",
-                    icon: "building.2.fill",
-                    selectedID: $viewModel.selectedWorkStationID
-                )
-                .tag(3)
+                    // Step 3: Select work station (from selected line's stops)
+                    stationPickerStep(
+                        title: "Where is your work station?",
+                        subtitle: "Select the station closest to work",
+                        icon: "building.2.fill",
+                        selectedID: $viewModel.selectedWorkStationID
+                    )
+                    .tag(3)
 
-                // Step 4: Notifications
-                notificationStep
-                    .tag(4)
+                    // Step 4: Notifications
+                    notificationStep
+                        .tag(4)
 
-                // Step 5: Siri setup
-                siriStep
-                    .tag(5)
+                    // Step 5: Siri setup
+                    siriStep
+                        .tag(5)
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .animation(.easeInOut, value: currentStep)
+
+                // Page indicator dots below content
+                pageIndicator
+                    .padding(.bottom, 24)
             }
-            .tabViewStyle(.page(indexDisplayMode: .always))
-            .animation(.easeInOut, value: currentStep)
         }
         .task {
             await viewModel.loadRoutes()
@@ -305,6 +313,17 @@ struct OnboardingView: View {
     }
 
     // MARK: - Helpers
+
+    private var pageIndicator: some View {
+        HStack(spacing: 8) {
+            ForEach(0..<totalSteps, id: \.self) { index in
+                Circle()
+                    .fill(index == currentStep ? Color.blue : Color.gray.opacity(0.3))
+                    .frame(width: 8, height: 8)
+                    .animation(.easeInOut(duration: 0.2), value: currentStep)
+            }
+        }
+    }
 
     private func nextButton(action: @escaping () -> Void) -> some View {
         Button(action: action) {
